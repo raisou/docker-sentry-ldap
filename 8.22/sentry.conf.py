@@ -38,7 +38,7 @@ from sentry.conf.server import *  # NOQA
 import os
 import os.path
 
-from decouple import config
+from decouple import config, Csv
 
 CONF_ROOT = os.path.dirname(__file__)
 
@@ -315,7 +315,9 @@ SENTRY_USE_LDAP = config('SENTRY_USE_LDAP', default=False, cast=bool)
 
 if SENTRY_USE_LDAP:
     import ldap
-    from django_auth_ldap.config import LDAPSearch, GroupOfUniqueNamesType, PosixGroupType, NestedGroupOfNamesType
+    from django_auth_ldap.config import (
+        LDAPSearch, GroupOfUniqueNamesType, PosixGroupType,
+        NestedGroupOfNamesType, GroupOfNamesType)
 
     AUTH_LDAP_SERVER_URI = config('LDAP_SERVER', default='ldap://localhost')
 
@@ -340,6 +342,8 @@ if SENTRY_USE_LDAP:
         AUTH_LDAP_GROUP_TYPE = PosixGroupType()
     elif config('LDAP_GROUP_TYPE', default='') == 'nestedGroupOfNames':
         AUTH_LDAP_GROUP_TYPE = NestedGroupOfNamesType()
+    elif config('LDAP_GROUP_TYPE', default='') == 'groupOfNames':
+        AUTH_LDAP_GROUP_TYPE = GroupOfNamesType()
 
     AUTH_LDAP_REQUIRE_GROUP = config('LDAP_REQUIRE_GROUP', default=None)
     AUTH_LDAP_DENY_GROUP = config('LDAP_DENY_GROUP', default=None)
@@ -350,21 +354,28 @@ if SENTRY_USE_LDAP:
         'email': config('LDAP_MAP_MAIL', default='mail')
     }
 
-    AUTH_LDAP_DEFAULT_SENTRY_ORGANIZATION = 'Locaweb'
-    AUTH_LDAP_SENTRY_ORGANIZATION_ROLE_TYPE = 'member'
-    AUTH_LDAP_FIND_GROUP_PERMS = False
-    AUTH_LDAP_SENTRY_SUBSCRIBE_BY_DEFAULT = False
+    AUTH_LDAP_DEFAULT_SENTRY_ORGANIZATION = config(
+        'LDAP_DEFAULT_SENTRY_ORGANIZATION', default='Locaweb')
+    AUTH_LDAP_SENTRY_ORGANIZATION_ROLE_TYPE = config(
+        'LDAP_SENTRY_ORGANIZATION_ROLE_TYPE', default='member')
+    AUTH_LDAP_SENTRY_SUBSCRIBE_BY_DEFAULT = config(
+        'LDAP_SENTRY_SUBSCRIBE_BY_DEFAULT', default=False, cast=bool)
 
-    ldap_is_active    = config('LDAP_GROUP_ACTIVE', default='')
-    ldap_is_superuser = config('LDAP_GROUP_SUPERUSER', default='')
-    ldap_is_staff     = config('LDAP_GROUP_STAFF', default='')
+    AUTH_LDAP_DEFAULT_EMAIL_DOMAIN = config(
+        'LDAP_DEFAULT_EMAIL_DOMAIN', default='')
 
-    if ldap_is_active or ldap_is_superuser or ldap_is_staff:
+    ldap_dn_staff = env('LDAP_GROUP_DN_STAFF').split(';')
+    ldap_dn_active = env('LDAP_GROUP_DN_ACTIVE').split(';')
+    ldap_dn_superuser = env('LDAP_GROUP_DN_SUPERUSER').split(';')
+
+    if ldap_dn_active or ldap_dn_staff or ldap_dn_superuser:
         AUTH_LDAP_USER_FLAGS_BY_GROUP = {
-            'is_active': ldap_is_active,
-            'is_superuser': ldap_is_superuser,
-            'is_staff': ldap_is_staff,
+            "is_active": ldap_dn_active,
+            "is_staff": ldap_dn_staff,
+            "is_superuser": ldap_dn_superuser
         }
+
+    SENTRY_MANAGED_USER_FIELDS = config('LDAP_SENTRY_MANAGED_USER_FIELDS', cast=Csv())
 
     AUTH_LDAP_FIND_GROUP_PERMS = config('LDAP_FIND_GROUP_PERMS', default=False, cast=bool)
 
@@ -373,10 +384,8 @@ if SENTRY_USE_LDAP:
     AUTH_LDAP_GROUP_CACHE_TIMEOUT = config('LDAP_GROUP_CACHE_TIMEOUT', default=3600, cast=int)
 
     AUTHENTICATION_BACKENDS = AUTHENTICATION_BACKENDS + (
-        'django_auth_ldap.backend.LDAPBackend',
+        'sentry_ldap_auth.backend.SentryLdapBackend',
     )
-
-
 
     # setup logging for django_auth_ldap
     import logging
@@ -384,4 +393,3 @@ if SENTRY_USE_LDAP:
     logger.addHandler(logging.StreamHandler())
     ldap_loglevel = getattr(logging, config('LDAP_LOGLEVEL', default='DEBUG'))
     logger.setLevel(ldap_loglevel)
-
